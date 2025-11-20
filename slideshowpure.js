@@ -1222,7 +1222,18 @@ const SlideshowManager = {
                  await this.updateCurrentSlide(0);
                  if (!STATE.slideshow.slideInterval) {
                       STATE.slideshow.slideInterval = new SlideTimer(() => { if (!STATE.slideshow.isPaused) this.nextSlide(); }, CONFIG.shuffleInterval);
-                      // Let VisibilityObserver start it initially
+                      // Start timer immediately if conditions are met
+                      const container = document.getElementById("slides-container");
+                      const homeTabElement = document.getElementById('homeTab');
+                      const containerIsInHomeTab = homeTabElement?.contains(container) ?? false;
+                      const isOnHomePage = window.location.hash === '#/home.html' || window.location.hash === '#/home';
+                      const homeTabButton = document.querySelector('.skinHeader .emby-tab-button[data-index="0"]');
+                      const homeTabActive = homeTabButton?.classList.contains('emby-tab-button-active') ?? false;
+                      
+                      if (container && containerIsInHomeTab && isOnHomePage && homeTabActive && !STATE.slideshow.isPaused) {
+                          console.log("[loadSlideshowData] Starting slideInterval immediately after creation.");
+                          STATE.slideshow.slideInterval.start();
+                      }
                  } else {
                      // If interval exists but wasn't running
                      if (!STATE.slideshow.slideInterval.timerId && !STATE.slideshow.isPaused) {
