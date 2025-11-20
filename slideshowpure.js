@@ -170,10 +170,14 @@ const initLoadingScreen = () => {
     const loadingDiv = document.createElement("div");
     loadingDiv.className = "bar-loading";
     loadingDiv.id = "page-loader";
+    
+    // Try to get logo from Jellyfin branding, fallback to text if not found
+    const logoPath = "/web/assets/img/banner-light.png";
+    
     loadingDiv.innerHTML = `
       <div class="loader-content">
         <h1>
-          <img src="/web/assets/img/banner-light.png" alt="Server Logo" style="opacity: 0;">
+          <img src="${logoPath}" alt="Jellyfin" style="opacity: 0;" id="loader-logo">
         </h1>
         <div class="progress-container">
           <div class="progress-bar" id="progress-bar" style="width: 0%;"></div>
@@ -184,16 +188,29 @@ const initLoadingScreen = () => {
     `;
     document.body.appendChild(loadingDiv);
 
-    requestAnimationFrame(() => {
-        const img = loadingDiv.querySelector("h1 img");
-        if(img) img.style.opacity = "1";
-    });
+    // Handle logo loading with fallback
+    const logoImg = loadingDiv.querySelector("#loader-logo");
+    if (logoImg) {
+        logoImg.addEventListener('error', function() {
+            // If logo fails to load, replace with text
+            this.style.display = 'none';
+            const textFallback = document.createElement('span');
+            textFallback.textContent = 'Jellyfin';
+            textFallback.style.cssText = 'color: white; font-size: 2em; font-weight: bold;';
+            this.parentElement.appendChild(textFallback);
+        });
+        requestAnimationFrame(() => {
+            if(logoImg) logoImg.style.opacity = "1";
+        });
+    }
 
     // Keep custom progress bar logic
     const progressBar = document.getElementById("progress-bar");
     const unfilledBar = document.getElementById("unfilled-bar");
     let progress = 0;
     let lastIncrement = 5;
+    let maxWaitTime = 10000; // Maximum 10 seconds wait time
+    let elapsedTime = 0;
 
     const progressInterval = setInterval(() => {
         if (progress < 95) {
@@ -208,34 +225,48 @@ const initLoadingScreen = () => {
         }
     }, 150);
 
-    // Keep custom check logic for hiding loader
+    // Improved check logic with timeout to prevent infinite loading
+    const hideLoader = () => {
+        clearInterval(progressInterval);
+        if (checkInterval) clearInterval(checkInterval);
+        if (timeoutId) clearTimeout(timeoutId);
+
+        if(progressBar) {
+            progressBar.style.transition = "width 300ms ease-in-out";
+            progressBar.style.width = "100%";
+        }
+         if(unfilledBar) {
+            unfilledBar.style.transition = "width 300ms ease-in-out";
+            unfilledBar.style.width = "0%";
+        }
+
+        // Fade out loader after progress animation
+        setTimeout(() => {
+            const loader = document.getElementById("page-loader");
+            if (loader) {
+                loader.style.opacity = '0';
+                loader.addEventListener('transitionend', () => loader.remove(), { once: true });
+            }
+        }, 350);
+    };
+
     const checkInterval = setInterval(() => {
+        elapsedTime += CONFIG.loadingCheckInterval;
         const loginFormLoaded = document.querySelector(".manualLoginForm");
         const homePageLoaded = document.querySelector(".homeSectionsContainer") && document.getElementById('slides-container');
+        // Also check if user is already logged in (no login form and home page elements exist)
+        const userLoggedIn = !loginFormLoaded && (document.querySelector(".homeSectionsContainer") || document.querySelector(".mainAnimatedPages"));
 
-        if (loginFormLoaded || homePageLoaded) {
-            clearInterval(progressInterval);
-            clearInterval(checkInterval);
-
-            if(progressBar) {
-                progressBar.style.transition = "width 300ms ease-in-out";
-                progressBar.style.width = "100%";
-            }
-             if(unfilledBar) {
-                unfilledBar.style.transition = "width 300ms ease-in-out";
-                unfilledBar.style.width = "0%";
-            }
-
-            // Fade out loader after progress animation (use timeout for reliability)
-            setTimeout(() => {
-                const loader = document.getElementById("page-loader");
-                if (loader) {
-                    loader.style.opacity = '0';
-                    loader.addEventListener('transitionend', () => loader.remove(), { once: true });
-                }
-            }, 350);
+        if (loginFormLoaded || homePageLoaded || (userLoggedIn && elapsedTime > 2000)) {
+            hideLoader();
         }
     }, CONFIG.loadingCheckInterval);
+
+    // Maximum timeout - force hide loader after 10 seconds
+    const timeoutId = setTimeout(() => {
+        console.warn("[initLoadingScreen] Maximum wait time reached, forcing loader to hide.");
+        hideLoader();
+    }, maxWaitTime);
 };
 
 /**
